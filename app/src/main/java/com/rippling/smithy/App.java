@@ -1,11 +1,12 @@
 package com.rippling.smithy;
 
-import java.nio.file.Path;
-import java.nio.file.Paths;
+import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
 import java.util.List;
-import java.util.stream.Collectors;
 
 import net.sourceforge.argparse4j.ArgumentParsers;
+import net.sourceforge.argparse4j.impl.Arguments;
 import net.sourceforge.argparse4j.inf.ArgumentParser;
 import net.sourceforge.argparse4j.inf.ArgumentParserException;
 import net.sourceforge.argparse4j.inf.Namespace;
@@ -25,8 +26,18 @@ public class App {
                 .defaultHelp(true)
                 .description("Convert Smithy schema to JSON Schema.");
 
-        parser.addArgument("file").nargs("+")
-                .help("Smithy schema file to convert.");
+        parser.addArgument("-i", "--input").nargs("+")
+                .type(Arguments.fileType().verifyCanRead().acceptSystemIn())
+                .setDefault("-")
+                .help("Input file or directory to convert.");
+
+        parser.addArgument("-o", "--output")
+                .setDefault("out")
+                .type(Arguments.fileType()
+                    .verifyNotExists().verifyCanCreate()
+                    .or().verifyIsDirectory().verifyCanWrite()
+                )
+                .help("Output directory to write the JSON Schema to.");
 
         Namespace ns = null;
         try {
@@ -38,34 +49,40 @@ public class App {
         return ns;
     }
 
+    public static String convertModel(final File file) {
+        final Model model = Model.assembler()
+                .addImport(file.toString())
+                .disableValidation()
+                .putProperty(ALLOW_UNKNOWN_TRAITS, true)
+                .assemble()
+                .unwrap();
 
-    public static void main(String[] args) {
+        SchemaDocument document = JsonSchemaConverter.builder().model(model).build().convert();
+        Node node = document.toNode();
+        return Node.prettyPrintJson(node);
+    }
+
+    public static void writeJson(final File output, final String json) throws IOException {
+        try (final FileWriter writer = new FileWriter(output)) {
+            writer.write(json);
+        }
+    }
+
+    public static void main(String[] args) throws IOException {
         final Namespace ns = parseArgs(args);
 
-        final List<String> files = ns.getList("file");
+        final List<File> files = ns.getList("input");
         if (files.isEmpty()) {
             System.err.println("No files provided.");
             System.exit(1);
         }
+        final File output = ns.get("output");
+        final Boolean _madeDirectories = output.mkdirs();
 
-        final List<String> absoluteFiles = files.stream()
-            .map(file -> file.replaceFirst("^~", System.getProperty("user.home")))
-            .map(file -> Paths.get(file).toAbsolutePath())
-            .map(Path::toString)
-            .collect(Collectors.toList());
 
-        System.out.println(absoluteFiles);
-
-        for (String file : absoluteFiles) {
-            final Model model = Model.assembler()
-                    .addImport(file)
-                    .disableValidation()
-                    .putProperty(ALLOW_UNKNOWN_TRAITS, true)
-                    .assemble()
-                    .unwrap();
-            SchemaDocument document = JsonSchemaConverter.builder().model(model).build().convert();
-            Node node = document.toNode();
-            System.out.println(Node.prettyPrintJson(node));
+        for (final File file : files) {
+            final String json = convertModel(file);
+            writeJson(new File(output, file.getName()), json);
         }
     }
 }
