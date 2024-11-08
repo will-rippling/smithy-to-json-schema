@@ -26,17 +26,18 @@ public class App {
                 .defaultHelp(true)
                 .description("Convert Smithy schema to JSON Schema.");
 
-        parser.addArgument("-i", "--input").nargs("+")
-                .type(Arguments.fileType().verifyCanRead().acceptSystemIn())
-                .setDefault("-")
+        parser.addArgument("-i", "--input")
+                .nargs("+")
+                .type(Arguments.fileType().verifyCanRead())
+                .required(true)
                 .help("Input file or directory to convert.");
 
         parser.addArgument("-o", "--output")
-                .setDefault("out")
                 .type(Arguments.fileType()
                     .verifyNotExists().verifyCanCreate()
                     .or().verifyIsDirectory().verifyCanWrite()
                 )
+                .required(true)
                 .help("Output directory to write the JSON Schema to.");
 
         Namespace ns = null;
